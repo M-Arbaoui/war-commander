@@ -1,0 +1,96 @@
+/*
+ * WARERA COMMAND — design tokens.
+ *
+ * Direction: military-ops dashboard + financial terminal, grounded in the
+ * subject (a war-economy strategy game). Signature element: the craft/buy
+ * verdict is rendered as a targeting-reticle bracket, not a generic pill —
+ * see .verdict in market.tsx's companion styles.
+ *
+ * Type system:
+ *   - Display/eyebrows: "Big Shoulders Condensed" — industrial, stencil-
+ *     adjacent, used sparingly for headers and section labels.
+ *   - Body/UI: "IBM Plex Sans" — engineering heritage, legible at the
+ *     density this app demands.
+ *   - Data/numeric: "IBM Plex Mono" — real tabular alignment for every
+ *     price, percentage, and stat in the app.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-void: #0a0c0f;
+  --color-panel: #12151a;
+  --color-panel-raised: #181c22;
+  --color-line: #262b33;
+  --color-line-strong: #363d47;
+
+  /* Ink */
+  --color-ink: #e4e7eb;
+  --color-ink-dim: #7c868f;
+  --color-ink-faint: #4b525c;
+
+  /* Semantic (brief-mandated: profit / loss / neutral) */
+  --color-positive: #6fcf6b;
+  --color-positive-dim: #2c3f2a;
+  --color-negative: #e5533d;
+  --color-negative-dim: #402823;
+  --color-neutral: #e8b04b;
+  --color-neutral-dim: #3f3423;
+
+  /* Accent (radar-blue, interactive/selected state) */
+  --color-accent: #3e8ede;
+  --color-accent-dim: #1e2e3d;
+
+  --font-display: "Big Shoulders Condensed", "Oswald", sans-serif;
+  --font-body: "IBM Plex Sans", "Inter", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    /* Subtle grid texture, per the brief. Two hairline gradients, kept very low-opacity. */
+    background-image:
+      linear-gradient(to right, rgba(230, 233, 237, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(230, 233, 237, 0.035) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-attachment: fixed;
+  }
+
+  /* Visible keyboard focus everywhere — no exceptions. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .font-tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .eyebrow {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    color: var(--color-ink-dim);
+  }
+}
