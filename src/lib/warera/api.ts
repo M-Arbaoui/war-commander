@@ -404,14 +404,17 @@ export async function searchUsers(searchText: string, options?: FetchOptions): P
     options,
   );
   if (result.status !== "ok") return result;
-  return ok(result.data.userIds);
+  return ok(result.data.userIds ?? []);
 }
 
 /**
  * Merges user.getUserById (equipped-gear slot map) with user.getUserLite
- * (real, server-computed skill totals) into one PlayerProfile. Two upstream
- * calls, run in parallel — both are needed since neither endpoint alone has
- * both equipment and the rich skill breakdown (see procedures.ts notes).
+ * (real, server-computed skill totals) into one PlayerProfile. Both calls
+ * run in parallel. Neither endpoint has a captured example payload (see
+ * procedures.ts), so this degrades gracefully rather than failing outright
+ * if one of the two doesn't validate: a profile with equipment but zeroed
+ * skills (or vice versa) is still useful, and far better than a hard error
+ * over one field mismatch we haven't verified live yet.
  */
 export async function getUserProfile(
   userId: string,
@@ -421,9 +424,29 @@ export async function getUserProfile(
     fetchValidated(PROCEDURES.user.getUserById.procedure, schemas.UserByIdSchema, { userId }, "world-state", options),
     fetchValidated(PROCEDURES.user.getUserLite.procedure, schemas.UserLiteSchema, { userId }, "world-state", options),
   ]);
-  if (byIdResult.status !== "ok") return byIdResult;
-  if (liteResult.status !== "ok") return liteResult;
-  return ok(normalize.mergePlayerProfile(byIdResult.data as never, liteResult.data as never));
+
+  if (byIdResult.status !== "ok" && liteResult.status !== "ok") {
+    return errored(
+      `Both user.getUserById and user.getUserLite failed for "${userId}": ` +
+        `getUserById -> ${byIdResult.status}: ${byIdResult.reason ?? "?"}; ` +
+        `getUserLite -> ${liteResult.status}: ${liteResult.reason ?? "?"}`,
+    );
+  }
+
+  // At least one succeeded — build the best profile we can, with a
+  // placeholder for whichever side is missing. mergePlayerProfile already
+  // defaults every field defensively, so passing minimal stand-ins is safe.
+  const byId = byIdResult.status === "ok" ? byIdResult.data : ({ _id: userId, username: "unknown" } as never);
+  const lite = liteResult.status === "ok" ? liteResult.data : ({ username: "unknown" } as never);
+
+  if (byIdResult.status !== "ok") {
+    console.warn(`[warera] getUserProfile("${userId}"): getUserById failed (${byIdResult.reason}); using getUserLite only.`);
+  }
+  if (liteResult.status !== "ok") {
+    console.warn(`[warera] getUserProfile("${userId}"): getUserLite failed (${liteResult.reason}); using getUserById only.`);
+  }
+
+  return ok(normalize.mergePlayerProfile(byId as never, lite as never));
 }
 
 /**

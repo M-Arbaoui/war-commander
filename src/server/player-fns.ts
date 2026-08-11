@@ -38,7 +38,20 @@ export const lookupPlayerByUsername = createServerFn({ method: "GET" })
     if (!match) match = profileResults.find((r) => r.status === "ok");
 
     if (!match || match.status !== "ok") {
-      return { status: "not-found", reason: `Found candidates but couldn't load a full profile for any of them.` };
+      // Surface the REAL underlying reasons (e.g. a schema mismatch on
+      // user.getUserById/getUserLite, neither of which has a captured
+      // example payload — see docs/API_NOTES.md) instead of a generic
+      // message, so this is actually debuggable once live.
+      const reasons = profileResults
+        .map((r, i) => (r.status !== "ok" ? `${candidateIds[i]}: ${r.reason}` : null))
+        .filter((r): r is string => r !== null);
+      return {
+        status: "not-found",
+        reason:
+          reasons.length > 0
+            ? `Found ${candidateIds.length} candidate(s) but couldn't load a profile: ${reasons.join(" | ")}`
+            : "Found candidates but none returned a profile.",
+      };
     }
 
     const companyIdsResult = await warera.getCompanyIds({ userId: match.data.id, perPage: 10 });

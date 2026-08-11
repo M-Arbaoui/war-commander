@@ -395,70 +395,108 @@ export const MuSchema = z
   })
   .passthrough();
 
-export const SearchResultSchema = z.object({
-  hasData: z.boolean(),
-  userIds: z.array(z.string()),
-  muIds: z.array(z.string()),
-});
+export const SearchResultSchema = z
+  .object({
+    hasData: z.boolean().optional(),
+    userIds: z.array(z.string()).default([]),
+    muIds: z.array(z.string()).optional().default([]),
+  })
+  .passthrough();
 
-const userSkillStandardSchema = z.object({
-  level: z.number(),
-  equipment: z.number().optional(),
-  total: z.number(),
-});
+const userSkillStandardSchema = z
+  .object({
+    level: z.number().optional(),
+    equipment: z.number().optional(),
+    total: z.number(),
+  })
+  .passthrough();
 
-const userSkillAttackSchema = z.object({
-  level: z.number(),
-  weapon: z.number(),
-  equipment: z.number().optional(),
-  ammoPercent: z.number(),
-  buffsPercent: z.number(),
-  debuffsPercent: z.number(),
-  militaryRankPercent: z.number(),
-  total: z.number(),
-});
+const userSkillAttackSchema = z
+  .object({
+    level: z.number().optional(),
+    weapon: z.number().optional(),
+    equipment: z.number().optional(),
+    ammoPercent: z.number().optional(),
+    buffsPercent: z.number().optional(),
+    debuffsPercent: z.number().optional(),
+    militaryRankPercent: z.number().optional(),
+    total: z.number(),
+  })
+  .passthrough();
 
-const userSkillBarSchema = z.object({
-  level: z.number(),
-  currentBarValue: z.number(),
-  hourlyBarRegen: z.number(),
-  total: z.number(),
-});
+const userSkillBarSchema = z
+  .object({
+    level: z.number().optional(),
+    currentBarValue: z.number().optional(),
+    hourlyBarRegen: z.number().optional(),
+    total: z.number(),
+  })
+  .passthrough();
 
-export const UserLiteSchema = z.object({
-  username: z.string(),
-  country: z.string(),
-  mu: z.string().optional(),
-  militaryRank: z.number(),
-  isActive: z.boolean(),
-  leveling: z.object({ level: z.number(), totalXp: z.number(), availableSkillPoints: z.number() }),
-  skills: z.object({
-    attack: userSkillAttackSchema,
-    armor: userSkillStandardSchema,
-    dodge: userSkillStandardSchema,
-    criticalChance: userSkillStandardSchema,
-    criticalDamages: userSkillStandardSchema,
-    precision: userSkillStandardSchema,
-    production: userSkillBarSchema,
-    companies: userSkillStandardSchema,
-    management: userSkillStandardSchema,
-    lootChance: userSkillStandardSchema,
-    entrepreneurship: userSkillBarSchema,
-  }),
-  rankings: z.record(z.string(), RankingEntrySchema),
-});
+/**
+ * Deliberately lenient: user.getUserLite/getUserById were never captured
+ * with a real example payload (Phase 1's "typed-only" confidence rating),
+ * so this only hard-requires a `username` and enough of the `leveling`
+ * block to show a level — everything else defaults to 0/empty rather than
+ * failing the whole parse over one unexpected field name. See
+ * docs/API_NOTES.md's live-verification note for this endpoint.
+ */
+export const UserLiteSchema = z
+  .object({
+    username: z.string(),
+    country: z.string().optional(),
+    mu: z.string().optional(),
+    militaryRank: z.number().optional().default(0),
+    isActive: z.boolean().optional(),
+    leveling: z
+      .object({
+        level: z.number().optional().default(0),
+        totalXp: z.number().optional(),
+        availableSkillPoints: z.number().optional(),
+      })
+      .optional()
+      .default({ level: 0 }),
+    skills: z
+      .object({
+        attack: userSkillAttackSchema.optional(),
+        armor: userSkillStandardSchema.optional(),
+        dodge: userSkillStandardSchema.optional(),
+        criticalChance: userSkillStandardSchema.optional(),
+        criticalDamages: userSkillStandardSchema.optional(),
+        precision: userSkillStandardSchema.optional(),
+        production: userSkillBarSchema.optional(),
+        companies: userSkillStandardSchema.optional(),
+        management: userSkillStandardSchema.optional(),
+        lootChance: userSkillStandardSchema.optional(),
+        entrepreneurship: userSkillBarSchema.optional(),
+      })
+      .partial()
+      .optional()
+      .default({}),
+    rankings: z.record(z.string(), z.unknown()).optional().default({}),
+  })
+  .passthrough();
 
-export const UserByIdSchema = z.object({
-  _id: z.string(),
-  username: z.string(),
-  country: z.string(),
-  mu: z.string().optional(),
-  company: z.string().optional(),
-  militaryRank: z.number(),
-  isActive: z.boolean(),
-  leveling: z.object({ level: z.number(), totalXp: z.number(), availableSkillPoints: z.number() }),
-  equipment: z.record(z.string(), z.string()).optional(),
-});
+export const UserByIdSchema = z
+  .object({
+    _id: z.string(),
+    username: z.string(),
+    country: z.string().optional(),
+    mu: z.string().optional(),
+    company: z.string().optional(),
+    militaryRank: z.number().optional().default(0),
+    isActive: z.boolean().optional(),
+    leveling: z
+      .object({
+        level: z.number().optional().default(0),
+        totalXp: z.number().optional(),
+        availableSkillPoints: z.number().optional(),
+      })
+      .optional()
+      .default({ level: 0 }),
+    equipment: z.record(z.string(), z.string()).optional().default({}),
+  })
+  .passthrough();
 
 
 export const EquippedItemSchema = z.object({

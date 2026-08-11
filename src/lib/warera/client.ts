@@ -152,9 +152,59 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Issues one HTTP request (GET with ?input=, or POST with a JSON body) to
+ * a WarEra tRPC procedure and returns the unwrapped payload. Not exported —
+ * wareraGet() below is the public entry point and handles the GET/POST
+ * ambiguity described there.
+ */
+async function requestOnce<T>(
+  procedure: string,
+  httpMethod: "GET" | "POST",
+  input: Record<string, unknown> | undefined,
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(
+      httpMethod === "GET" ? buildUrl(procedure, input) : `${WARERA_BASE_URL}/${procedure}`,
+      {
+        method: httpMethod,
+        signal: controller.signal,
+        headers:
+          httpMethod === "GET"
+            ? { accept: "application/json" }
+            : { accept: "application/json", "content-type": "application/json" },
+        body: httpMethod === "POST" ? JSON.stringify(input ?? {}) : undefined,
+      },
+    );
+    if (!response.ok) {
+      throw new WareraApiError(`${procedure} responded with HTTP ${response.status}`, procedure, undefined, response.status);
+    }
+    const body = await response.json();
+    return unwrapTrpcResponse<T>(body, procedure);
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+/**
  * Issues a single GET request to a WarEra tRPC procedure with timeout +
  * retry + error handling. Returns the *unwrapped* payload, still untyped —
  * schema validation happens one layer up in api.ts.
+ *
+ * GET-vs-POST NOTE: every endpoint whose transport this codebase has real
+ * evidence for (majimawrks/warera-api-docs' captured traffic) uses plain
+ * GET with a `?input=` query string, and that's the default here. A small
+ * number of newer procedures (search.searchAnything, user.getUserById,
+ * user.getUserLite) are documented as POST-only in WarEraProjects/TRPC's
+ * generated OpenAPI spec — but that same spec also labels
+ * gameConfig.getGameConfig as POST, which is *confirmed* to work via GET,
+ * so that labeling isn't trustworthy evidence of the real transport either
+ * way. Rather than guess, this function tries GET first (matching every
+ * confirmed-working endpoint) and automatically falls back to POST once if
+ * GET fails — so it self-corrects in production regardless of which
+ * assumption turns out to be right, instead of hard-failing on a guess.
  */
 export async function wareraGet<T>(
   procedure: string,
@@ -164,50 +214,52 @@ export async function wareraGet<T>(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = options.retries ?? DEFAULT_RETRIES;
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
-  const url = buildUrl(procedure, input);
 
   let lastError: unknown;
+  let triedPostFallback = false;
 
   for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-    devLog({ type: "request", procedure, url, attempt }, options.onLog);
+    const httpMethod: "GET" | "POST" = triedPostFallback ? "POST" : "GET";
+    devLog({ type: "request", procedure, url: `[${httpMethod}] ${procedure}`, attempt }, options.onLog);
     const startedAt = Date.now();
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        signal: controller.signal,
-        headers: { accept: "application/json" },
-      });
-      clearTimeout(timeoutHandle);
-
-      if (!response.ok) {
-        throw new WareraApiError(
-          `${procedure} responded with HTTP ${response.status}`,
-          procedure,
-          undefined,
-          response.status,
-        );
-      }
-
-      const body = await response.json();
-      const data = unwrapTrpcResponse<T>(body, procedure);
+      const data = await requestOnce<T>(procedure, httpMethod, input, timeoutMs);
       devLog({ type: "success", procedure, durationMs: Date.now() - startedAt, attempt }, options.onLog);
       return data;
     } catch (err) {
-      clearTimeout(timeoutHandle);
-      lastError =
-        err instanceof Error && err.name === "AbortError"
-          ? new WareraTimeoutError(procedure, timeoutMs)
-          : err;
+      const normalized =
+        err instanceof Error && err.name === "AbortError" ? new WareraTimeoutError(procedure, timeoutMs) : err;
+      lastError = normalized;
 
-      const willRetry = attempt <= maxRetries && isRetryable(lastError);
+      // One-time GET->POST fallback, but ONLY on signals that plausibly mean
+      // "wrong HTTP method" (404/405) — never on a legitimate 4xx/5xx
+      // business error or timeout, which would otherwise double every real
+      // failure for no benefit and break "don't retry 4xx" semantics.
+      const looksLikeWrongMethod =
+        normalized instanceof WareraApiError && (normalized.httpStatus === 404 || normalized.httpStatus === 405);
+      if (httpMethod === "GET" && !triedPostFallback && looksLikeWrongMethod) {
+        triedPostFallback = true;
+        devLog(
+          {
+            type: "error",
+            procedure,
+            error: `GET returned HTTP ${(normalized as WareraApiError).httpStatus} — trying POST fallback`,
+            attempt,
+            willRetry: true,
+          },
+          options.onLog,
+        );
+        attempt--; // Don't consume a retry slot on the fallback attempt.
+        continue;
+      }
+
+      const willRetry = attempt <= maxRetries && isRetryable(normalized);
       devLog(
         {
           type: "error",
           procedure,
-          error: lastError instanceof Error ? lastError.message : String(lastError),
+          error: normalized instanceof Error ? normalized.message : String(normalized),
           attempt,
           willRetry,
         },
@@ -215,13 +267,8 @@ export async function wareraGet<T>(
       );
 
       if (!willRetry) break;
-      // Exponential backoff with jitter for rate limits (matches the
-      // pattern majimawrks/warera-fetch found necessary against this same
-      // API's 429 responses); plain linear backoff otherwise.
-      const isRateLimited = lastError instanceof WareraApiError && lastError.httpStatus === 429;
-      const backoffMs = isRateLimited
-        ? 2 ** attempt * 1000 + Math.random() * 1000
-        : retryDelayMs * attempt;
+      const isRateLimited = normalized instanceof WareraApiError && normalized.httpStatus === 429;
+      const backoffMs = isRateLimited ? 2 ** attempt * 1000 + Math.random() * 1000 : retryDelayMs * attempt;
       await delay(backoffMs);
     }
   }

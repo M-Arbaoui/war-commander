@@ -519,46 +519,48 @@ export interface RawUserSkillBar {
   total: number;
 }
 
+export interface RawUserLiteSkills {
+  attack?: RawUserSkillAttack;
+  armor?: RawUserSkillStandard;
+  dodge?: RawUserSkillStandard;
+  criticalChance?: RawUserSkillStandard;
+  criticalDamages?: RawUserSkillStandard;
+  precision?: RawUserSkillStandard;
+  production?: RawUserSkillBar;
+  companies?: RawUserSkillStandard;
+  management?: RawUserSkillStandard;
+  lootChance?: RawUserSkillStandard;
+  entrepreneurship?: RawUserSkillBar;
+}
+
 /** user.getUserLite — rich computed skill breakdown, no equipment map. */
 export interface RawUserLite {
   username: string;
-  country: string;
+  country?: string;
   mu?: string;
-  militaryRank: number;
-  isActive: boolean;
-  leveling: { level: number; totalXp: number; availableSkillPoints: number };
-  skills: {
-    attack: RawUserSkillAttack;
-    armor: RawUserSkillStandard;
-    dodge: RawUserSkillStandard;
-    criticalChance: RawUserSkillStandard;
-    criticalDamages: RawUserSkillStandard;
-    precision: RawUserSkillStandard;
-    production: RawUserSkillBar;
-    companies: RawUserSkillStandard;
-    management: RawUserSkillStandard;
-    lootChance: RawUserSkillStandard;
-    entrepreneurship: RawUserSkillBar;
-  };
-  rankings: Record<string, RawRankingEntry>;
+  militaryRank?: number;
+  isActive?: boolean;
+  leveling?: { level?: number; totalXp?: number; availableSkillPoints?: number };
+  skills?: RawUserLiteSkills;
+  rankings?: Record<string, unknown>;
 }
 
 /** user.getUserById — has the equipment slot map, but a loosely-typed skills blob. */
 export interface RawUserById {
   _id: string;
   username: string;
-  usernameLower: string;
-  country: string;
+  usernameLower?: string;
+  country?: string;
   mu?: string;
   company?: string;
   party?: string;
-  militaryRank: number;
-  isActive: boolean;
+  militaryRank?: number;
+  isActive?: boolean;
   avatarUrl?: string;
-  leveling: { level: number; totalXp: number; availableSkillPoints: number };
+  leveling?: { level?: number; totalXp?: number; availableSkillPoints?: number };
   /** slot name -> equipped item code, e.g. { weapon: "rifle3", helmet: "helmet2" } */
   equipment?: Record<string, string>;
-  rankings: Record<string, { rank: number; tier: string; value: number } | undefined>;
+  rankings?: Record<string, unknown>;
 }
 
 

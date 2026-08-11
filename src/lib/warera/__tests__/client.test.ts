@@ -161,4 +161,60 @@ describe("wareraGet", () => {
     expect(result).toEqual({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("falls back to POST when GET returns HTTP 404, and succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, { status: 404 }))
+      .mockResolvedValueOnce(jsonResponse({ userIds: ["u1"] }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await wareraGet("search.searchAnything", { searchText: "foo" }, { retries: 0 });
+
+    expect(result).toEqual({ userIds: ["u1"] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [, secondCallInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(secondCallInit.method).toBe("POST");
+    expect(JSON.parse(secondCallInit.body as string)).toEqual({ searchText: "foo" });
+  });
+
+  it("falls back to POST when GET returns HTTP 405", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, { status: 405 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await wareraGet("user.getUserById", { userId: "u1" }, { retries: 0 });
+    expect(result).toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT fall back to POST for a legitimate 400/500 or app-level error (only 404/405 trigger it)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}, { status: 400 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(wareraGet("company.getById", { companyId: "bad" }, { retries: 0 })).rejects.toThrow(
+      WareraApiError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not spend a retry slot on the POST fallback attempt itself", async () => {
+    // retries: 1 means at most 2 GET attempts total if it were counted as a retry.
+    // With the fallback excluded from the retry budget, we expect exactly:
+    // GET (404) -> POST fallback (fails, 500) -> retry -> GET (fails, 500) -> stop.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, { status: 404 })) // GET -> triggers fallback
+      .mockResolvedValueOnce(jsonResponse({}, { status: 500 })) // POST fallback fails, retryable
+      .mockResolvedValueOnce(jsonResponse({}, { status: 500 })); // 1 retry (GET again), fails
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const promise = wareraGet("user.getUserLite", { userId: "u1" }, { retries: 1, retryDelayMs: 10 });
+    const expectation = expect(promise).rejects.toThrow(WareraApiError);
+    await vi.runAllTimersAsync();
+    await expectation;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
 });

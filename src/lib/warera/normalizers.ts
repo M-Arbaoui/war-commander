@@ -33,6 +33,7 @@ import type {
   RawUpgradesConfig,
   RawUserById,
   RawUserLite,
+  RawUserSkillAttack,
   RawWorkOffer,
   RawWorkersResponse,
 } from "./types";
@@ -504,48 +505,52 @@ export function normalizeMu(raw: RawMu): MilitaryUnit {
 // Player profile — merges user.getUserById + user.getUserLite
 // ---------------------------------------------------------------------------
 
-function standardBreakdown(raw: { level: number; equipment?: number; total: number }): PlayerSkillBreakdown {
+function standardBreakdown(raw: { level?: number; equipment?: number; total: number } | undefined): PlayerSkillBreakdown {
+  if (!raw) return { total: 0, fromLevel: 0, fromEquipment: null, fromWeapon: null };
   return {
     total: raw.total,
-    fromLevel: raw.level,
+    fromLevel: raw.level ?? 0,
     fromEquipment: raw.equipment ?? null,
     fromWeapon: null,
   };
 }
 
-function attackBreakdown(raw: RawUserLite["skills"]["attack"]): PlayerSkillBreakdown {
+function attackBreakdown(raw: RawUserSkillAttack | undefined): PlayerSkillBreakdown {
+  if (!raw) return { total: 0, fromLevel: 0, fromEquipment: null, fromWeapon: null };
   return {
     total: raw.total,
-    fromLevel: raw.level,
+    fromLevel: raw.level ?? 0,
     fromEquipment: raw.equipment ?? null,
-    fromWeapon: raw.weapon,
+    fromWeapon: raw.weapon ?? null,
   };
 }
 
-function barBreakdown(raw: { level: number; total: number }): PlayerSkillBreakdown {
-  return { total: raw.total, fromLevel: raw.level, fromEquipment: null, fromWeapon: null };
+function barBreakdown(raw: { level?: number; total: number } | undefined): PlayerSkillBreakdown {
+  if (!raw) return { total: 0, fromLevel: 0, fromEquipment: null, fromWeapon: null };
+  return { total: raw.total, fromLevel: raw.level ?? 0, fromEquipment: null, fromWeapon: null };
 }
 
 export function mergePlayerProfile(byId: RawUserById, lite: RawUserLite): PlayerProfile {
+  const skills = lite.skills ?? {};
   return {
     id: byId._id,
     username: byId.username,
-    level: lite.leveling.level,
-    countryId: byId.country,
+    level: lite.leveling?.level ?? byId.leveling?.level ?? 0,
+    countryId: byId.country ?? "",
     muId: byId.mu ?? null,
     companyId: byId.company ?? null,
-    militaryRank: byId.militaryRank,
+    militaryRank: byId.militaryRank ?? 0,
     equipment: { ...(byId.equipment ?? {}) },
     skills: {
-      attack: attackBreakdown(lite.skills.attack),
-      armor: standardBreakdown(lite.skills.armor),
-      dodge: standardBreakdown(lite.skills.dodge),
-      criticalChance: standardBreakdown(lite.skills.criticalChance),
-      criticalDamages: standardBreakdown(lite.skills.criticalDamages),
-      precision: standardBreakdown(lite.skills.precision),
-      production: barBreakdown(lite.skills.production),
-      companies: standardBreakdown(lite.skills.companies),
-      management: standardBreakdown(lite.skills.management),
+      attack: attackBreakdown(skills.attack),
+      armor: standardBreakdown(skills.armor),
+      dodge: standardBreakdown(skills.dodge),
+      criticalChance: standardBreakdown(skills.criticalChance),
+      criticalDamages: standardBreakdown(skills.criticalDamages),
+      precision: standardBreakdown(skills.precision),
+      production: barBreakdown(skills.production),
+      companies: standardBreakdown(skills.companies),
+      management: standardBreakdown(skills.management),
     },
   };
 }
